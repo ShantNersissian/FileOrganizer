@@ -1,148 +1,149 @@
-import socket
-import threading
-import os
-
-import tkinter as tk
 from tkinter import *
 from tkinter import filedialog, messagebox
+import os
+from PIL import Image, ImageTk
+import socket
+import threading
+import hashlib
 
-class P2PApp:
-    def __init__(self, master):
-        self.master = master
-        master.title("P2P File Sharing App")
+root = Tk()
+root.title("P2P File Sharing")
+root.geometry("450x560+500+200")
+root.configure(bg="#f4fdfe")
+root.resizable(False, False)
 
-        # File list
-        self.file_list_box = tk.Listbox(master, height=10, width=50)
-        self.file_list_box.pack(pady=10)
+def resize_image(image_path, new_width, new_height):
+    original_image = Image.open(image_path)
+    resized_image = original_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    return ImageTk.PhotoImage(resized_image)
 
-        # Share File button
-        self.share_button = tk.Button(master, text="Share File", command=self.share_file)
-        self.share_button.pack(pady=5)
-
-        # Download File button
-        self.download_button = tk.Button(master, text="Download File", command=self.download_file)
-        self.download_button.pack(pady=5)
-
-        # Status bar
-        self.status = tk.Label(master, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
-        self.status.pack(side=tk.BOTTOM, fill=tk.X)
+def send_file(filename, host, port):
+    try:
+        # Get the size of the file
+        filesize = os.path.getsize(filename)
+        # Open the file
+        with open(filename, 'rb') as file:
+            # Create a checksum object
+            checksum = hashlib.md5()
+            
+            # Read the file and update the checksum
+            data = file.read()
+            checksum.update(data)
+            
+        # Connect to the receiver
+        s = socket.socket()
+        s.connect((host, int(port)))
         
-        threading.Thread(target=self.start_server, daemon=True).start()
+        # Send the file size and checksum first
+        s.sendall(f"{filesize}|{checksum.hexdigest()}".encode())
         
-        # Input for Peer IP Address
-        self.peer_ip_label = tk.Label(master, text="Peer IP:")
-        self.peer_ip_label.pack(pady=2)
-        self.peer_ip_entry = tk.Entry(master)
-        self.peer_ip_entry.pack(pady=2)
+        # Wait for the receiver to acknowledge the file size and checksum
+        s.recv(1024)
+        
+        # Reopen the file and send the data
+        with open(filename, 'rb') as file:
+            s.sendfile(file)
+        
+        messagebox.showinfo("Success", "File sent successfully.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to send file: {e}")
+    finally:
+        # Shutdown and close the socket
+        s.shutdown(socket.SHUT_WR)
+        s.close()
 
-        # Input for Peer Port
-        self.peer_port_label = tk.Label(master, text="Peer Port:")
-        self.peer_port_label.pack(pady=2)
-        self.peer_port_entry = tk.Entry(master)
-        self.peer_port_entry.pack(pady=2)
+def receive_file(save_path, port):
+    try:
+        # Create a socket and listen for a connection
+        s = socket.socket()
+        s.bind(('', int(port)))
+        s.listen(1)
+        conn, addr = s.accept()
 
-        # Connect to Peer button
-        self.connect_button = tk.Button(master, text="Connect to Peer", command=self.initiate_connection)
-        self.connect_button.pack(pady=5)
+        # Receive the file size and checksum
+        received = conn.recv(1024).decode()
+        filesize, sent_checksum = received.split('|')
+        filesize = int(filesize)
+        
+        # Acknowledge the file size and checksum
+        conn.sendall(b"ACK")
+        
+        # Receive the file data
+        with open(save_path, 'wb') as file:
+            bytes_received = 0
+            checksum = hashlib.md5()
+            while bytes_received < filesize:
+                data = conn.recv(4096)
+                file.write(data)
+                checksum.update(data)
+                bytes_received += len(data)
 
-    def initiate_connection(self):
-        peer_ip = self.peer_ip_entry.get()
-        peer_port = self.peer_port_entry.get()
-
-        if peer_ip and peer_port:
-            try:
-                peer_port = int(peer_port)
-                self.connect_to_peer(peer_ip, peer_port)
-                messagebox.showinfo("Connection", f"Connected to {peer_ip}:{peer_port}")
-            except ValueError:
-                messagebox.showerror("Error", "Invalid port number.")
-            except Exception as e:
-                messagebox.showerror("Connection Error", str(e))
+        # Verify the checksum
+        if checksum.hexdigest() == sent_checksum:
+            messagebox.showinfo("Success", "File received successfully.")
         else:
-            messagebox.showwarning("Warning", "Please enter both IP and Port")
+            messagebox.showerror("Error", "File corrupted during transfer.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to receive file: {e}")
+    finally:
+        # Close the connection and the listening socket
+        conn.close()
+        s.close()
 
-    def start_server(self):
-        host = '0.0.0.0'
-        port = 12345
+def send_window():
+    window = Toplevel(root)
+    window.title("Send File")
+    window.geometry('450x250+500+200')
+    window.configure(bg="#f4fdfe")
+    window.resizable(False, False)
 
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((host, port))
-        server_socket.listen()
+    Label(window, text="File Path:", bg="#f4fdfe").grid(row=0, column=0, padx=10, pady=10)
+    file_path_entry = Entry(window, width=50)
+    file_path_entry.grid(row=0, column=1, padx=10, pady=10)
 
-        while True:
-            client_socket, addr = server_socket.accept()
-            print(f"Connection from {addr} has been established.")
+    Label(window, text="Host:", bg="#f4fdfe").grid(row=1, column=0)
+    host_entry = Entry(window, width=50)
+    host_entry.grid(row=1, column=1, padx=10, pady=10)
 
-            # New thread to handle the client
-            threading.Thread(target=self.handle_client, args=(client_socket,)).start()
+    Label(window, text="Port:", bg="#f4fdfe").grid(row=2, column=0)
+    port_entry = Entry(window, width=50)
+    port_entry.grid(row=2, column=1, padx=10, pady=10)
 
-    def handle_client(self, client_socket):
-        # Receive the filename request
-        file_request = client_socket.recv(1024).decode()
+    def browse_file():
+        file_path = filedialog.askopenfilename(initialdir=os.getcwd(), title='Select File')
+        file_path_entry.delete(0, END)
+        file_path_entry.insert(0, file_path)
 
-        # Check if the file is available
-        if os.path.isfile(file_request):
-            # Send file size first
-            client_socket.send(str(os.path.getsize(file_request)).encode())
+    def send_action():
+        threading.Thread(target=send_file, args=(file_path_entry.get(), host_entry.get(), port_entry.get())).start()
 
-            # Then send the file in chunks
-            with open(file_request, 'rb') as f:
-                bytes_to_send = f.read(1024)
-                while bytes_to_send:
-                    client_socket.send(bytes_to_send)
-                    bytes_to_send = f.read(1024)
-        else:
-            client_socket.send(b'File not found')
+    Button(window, text="Browse", command=browse_file).grid(row=0, column=2, padx=10, pady=10)
+    Button(window, text="Send", command=send_action).grid(row=3, column=1, padx=10, pady=10)
 
-        client_socket.close()
+def receive_window():
+    window = Toplevel(root)
+    window.title("Receive File")
+    window.geometry('450x150+500+200')
+    window.configure(bg="#f4fdfe")
+    window.resizable(False, False)
 
-    def share_file(self):
-        filename = filedialog.askopenfilename()
-        if filename:
-            # Logic to share the file goes here
-            self.status.config(text=f"Selected {filename} to share")
-            # Add file to the list
-            self.file_list_box.insert(tk.END, filename)
+    Label(window, text="Save Path:", bg="#f4fdfe").grid(row=0, column=0, padx=10, pady=10)
+    save_path_entry = Entry(window, width=50)
+    save_path_entry.grid(row=0, column=1, padx=10, pady=10)
 
-    def download_file(self):
-        selected = self.file_list_box.curselection()
-        if selected:
-            filename = self.file_list_box.get(selected[0])
+    Label(window, text="Port:", bg="#f4fdfe").grid(row=1, column=0)
+    port_entry = Entry(window, width=50)
+    port_entry.grid(row=1, column=1, padx=10, pady=10)
 
-            # Connect to the peer (You'll need the IP and port)
-            peer_ip = 'peer_ip_here'
-            peer_port = 12345
-            self.connect_to_peer(peer_ip, peer_port, filename)
-        else:
-            messagebox.showwarning("Warning", "Please select a file to download")
+    def receive_action():
+        threading.Thread(target=receive_file, args=(save_path_entry.get(), port_entry.get())).start()
 
-    def connect_to_peer(self, peer_ip, peer_port, file_request):
-        try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((peer_ip, peer_port))
+    Button(window, text="Receive", command=receive_action).grid(row=2, column=1, padx=10, pady=10)
 
-            # Send file request
-            client_socket.send(file_request.encode())
+send_btn = Button(root, text="Send File", command=send_window, width=20, height=2)
+send_btn.place(x=50, y=100)
 
-            # Receive file size
-            file_size = int(client_socket.recv(1024).decode())
+receive_btn = Button(root, text="Receive File", command=receive_window, width=20, height=2)
+receive_btn.place(x=250, y=100)
 
-            # Now receive the file in chunks
-            with open(f"downloaded_{file_request}", 'wb') as f:
-                bytes_received = 0
-                while bytes_received < file_size:
-                    chunk = client_socket.recv(1024)
-                    if not chunk: 
-                        break  # Connection closed
-                    f.write(chunk)
-                    bytes_received += len(chunk)
-
-            client_socket.close()
-            messagebox.showinfo("Download", f"Downloaded {file_request}")
-        except Exception as e:
-            messagebox.showerror("Connection Error", f"Could not connect to peer: {e}")
-
-# Initialize Tkinter
-root = tk.Tk()
-app = P2PApp(root)
 root.mainloop()
