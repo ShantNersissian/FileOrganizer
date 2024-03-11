@@ -6,7 +6,7 @@ from PySide6.QtGui import QDragEnterEvent, QDropEvent
 def xor_encrypt(data, key):
     return bytes(a ^ b for a, b in zip(data, key * (len(data) // len(key)) + key[:len(data) % len(key)]))
 
-def send_file(filename, key, host='0.0.0.0', port=5000):
+def send_file(filename, key, host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         try:
             server_socket.bind((host, port))
@@ -51,8 +51,8 @@ class SenderWindow(QWidget):
         file_layout.addWidget(self.filename_edit)
         file_layout.addWidget(self.browse_button)
 
-        self.key_edit = QLineEdit()
-        self.host_edit = QLineEdit("0.0.0.0")
+        self.key_edit = QLineEdit("hello6.docx")
+        self.host_edit = QLineEdit("10.101.141.219")
         self.port_edit = QLineEdit("5000")
         self.start_button = QPushButton("Start Sending")
 
