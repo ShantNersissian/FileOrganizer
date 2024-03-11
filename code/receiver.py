@@ -43,8 +43,8 @@ class ReceiverWindow(QWidget):
         self.setGeometry(100, 100, 400, 200)
         layout = QVBoxLayout()
 
-        self.filename_edit = QLineEdit()
-        self.key_edit = QLineEdit("C:/Users/shant/Downloads/hello.docx")
+        self.filename_edit = QLineEdit("hello6.docx")
+        self.key_edit = QLineEdit("0")
         self.host_edit = QLineEdit("10.101.141.219")
         self.port_edit = QLineEdit("5000")
         self.start_button = QPushButton("Start Receiving")

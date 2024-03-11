@@ -46,12 +46,12 @@ class SenderWindow(QWidget):
         layout = QVBoxLayout()
 
         file_layout = QHBoxLayout()
-        self.filename_edit = QLineEdit()
+        self.filename_edit = QLineEdit("C:/Users/shant/Downloads/hello.docx")
         self.browse_button = QPushButton("Browse")
         file_layout.addWidget(self.filename_edit)
         file_layout.addWidget(self.browse_button)
 
-        self.key_edit = QLineEdit("hello6.docx")
+        self.key_edit = QLineEdit("0")
         self.host_edit = QLineEdit("10.101.141.219")
         self.port_edit = QLineEdit("5000")
         self.start_button = QPushButton("Start Sending")
