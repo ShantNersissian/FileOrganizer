@@ -3,6 +3,39 @@ from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineE
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
+DARK_THEME_STYLESHEET = """
+QWidget {
+    background-color: #2D2D2D;
+    color: #E0E0E0;
+    font-family: 'Segoe UI';
+    font-size: 14px;
+}
+
+QLineEdit {
+    border: 2px solid #555555;
+    border-radius: 5px;
+    padding: 5px;
+    background-color: #333333;
+    color: #E0E0E0;
+}
+
+QPushButton {
+    border: 2px solid #555555;
+    border-radius: 5px;
+    padding: 5px;
+    background-color: #555555;
+    color: #E0E0E0;
+}
+
+QPushButton:hover {
+    background-color: #777777;
+}
+
+QLabel {
+    color: #E0E0E0;
+}
+"""
+
 def xor_encrypt(data, key):
     return bytes(a ^ b for a, b in zip(data, key * (len(data) // len(key)) + key[:len(data) % len(key)]))
 
@@ -41,21 +74,28 @@ class SenderWindow(QWidget):
 
     def initUI(self):
         self.setWindowTitle("File Sender")
-        self.setGeometry(100, 100, 500, 300)
+        self.setGeometry(100, 100, 600, 400)
+        self.setStyleSheet(DARK_THEME_STYLESHEET)  # Apply dark theme stylesheet
         self.setAcceptDrops(True)
+        
         layout = QVBoxLayout()
-
+        layout.setSpacing(10)  # Increased spacing
+        
         file_layout = QHBoxLayout()
-        self.filename_edit = QLineEdit("C:/Users/shant/Downloads/hello.docx")
+        file_layout.setSpacing(5)
+        self.filename_edit = QLineEdit()
+        self.filename_edit.setPlaceholderText("Drag and drop or browse to select file")  # Placeholder text for clarity
         self.browse_button = QPushButton("Browse")
+        
         file_layout.addWidget(self.filename_edit)
         file_layout.addWidget(self.browse_button)
-
-        self.key_edit = QLineEdit("0")
-        self.host_edit = QLineEdit("10.101.141.219")
+        
+        self.key_edit = QLineEdit()
+        self.key_edit.setPlaceholderText("Enter encryption key")
+        self.host_edit = QLineEdit("localhost")
         self.port_edit = QLineEdit("5000")
         self.start_button = QPushButton("Start Sending")
-
+        
         layout.addLayout(file_layout)
         layout.addWidget(QLabel("Encryption Key:"))
         layout.addWidget(self.key_edit)
@@ -64,7 +104,7 @@ class SenderWindow(QWidget):
         layout.addWidget(QLabel("Port:"))
         layout.addWidget(self.port_edit)
         layout.addWidget(self.start_button)
-
+        
         self.setLayout(layout)
 
         self.browse_button.clicked.connect(self.browse_file)

@@ -1,6 +1,39 @@
 import sys, socket, os, hashlib
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 
+DARK_THEME_STYLESHEET = """
+QWidget {
+    background-color: #2D2D2D;
+    color: #E0E0E0;
+    font-family: 'Segoe UI';
+    font-size: 14px;
+}
+
+QLineEdit {
+    border: 2px solid #555555;
+    border-radius: 5px;
+    padding: 5px;
+    background-color: #333333;
+    color: #E0E0E0;
+}
+
+QPushButton {
+    border: 2px solid #555555;
+    border-radius: 5px;
+    padding: 5px;
+    background-color: #555555;
+    color: #E0E0E0;
+}
+
+QPushButton:hover {
+    background-color: #777777;
+}
+
+QLabel {
+    color: #E0E0E0;
+}
+"""
+
 def xor_decrypt(data, key):
     return bytes(a ^ b for a, b in zip(data, key * (len(data) // len(key)) + key[:len(data) % len(key)]))
 
@@ -40,15 +73,20 @@ class ReceiverWindow(QWidget):
 
     def initUI(self):
         self.setWindowTitle("File Receiver")
-        self.setGeometry(100, 100, 400, 200)
+        self.setGeometry(100, 100, 600, 400)
+        self.setStyleSheet(DARK_THEME_STYLESHEET)  # Apply dark theme stylesheet
+        
         layout = QVBoxLayout()
-
-        self.filename_edit = QLineEdit("hello6.docx")
-        self.key_edit = QLineEdit("0")
-        self.host_edit = QLineEdit("10.101.141.219")
+        layout.setSpacing(10)
+        
+        self.filename_edit = QLineEdit()
+        self.filename_edit.setPlaceholderText("Enter filename to save as")
+        self.key_edit = QLineEdit()
+        self.key_edit.setPlaceholderText("Enter encryption key")
+        self.host_edit = QLineEdit("localhost")
         self.port_edit = QLineEdit("5000")
         self.start_button = QPushButton("Start Receiving")
-
+        
         layout.addWidget(QLabel("Filename:"))
         layout.addWidget(self.filename_edit)
         layout.addWidget(QLabel("Encryption Key:"))
@@ -58,10 +96,11 @@ class ReceiverWindow(QWidget):
         layout.addWidget(QLabel("Port:"))
         layout.addWidget(self.port_edit)
         layout.addWidget(self.start_button)
-
+        
         self.setLayout(layout)
 
         self.start_button.clicked.connect(self.start_receiving)
+
 
     def start_receiving(self):
         filename = self.filename_edit.text()
