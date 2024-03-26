@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="path_to_your_logo/logo.png" alt="File Sharing Logo" width="200"/>
+    <img src="logo.pdf" alt="File Sharing Logo" width="200"/>
 </div><h1 align="center">File Sharing</h1>
 <p align="center"><strong>Secure and Efficient File Transfer Application</strong>
 <br/>
