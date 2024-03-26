@@ -53,16 +53,21 @@ def send_file(filename, key, host, port):
                 key_hash = hashlib.sha256(key).digest()
                 client_socket.sendall(key_hash)
 
-                file_size = os.path.getsize(filename)
-                client_socket.sendall(file_size.to_bytes(8, 'big'))
+                file_name = os.path.basename(filename).encode()
+                client_socket.sendall(len(file_name).to_bytes(4, 'big'))
+                client_socket.sendall(file_name)
 
                 with open(filename, 'rb') as file:
-                    while True:
-                        data = file.read(1024)
-                        if not data:
-                            break
-                        encrypted_data = xor_encrypt(data, key)
-                        client_socket.sendall(encrypted_data)
+                    file_data = file.read()
+
+                encrypted_data = xor_encrypt(file_data, key)
+                client_socket.sendall(len(encrypted_data).to_bytes(8, 'big'))
+                client_socket.sendall(encrypted_data)
+
+                # Send the SHA-256 hash of the original file data
+                file_hash = hashlib.sha256(file_data).digest()
+                client_socket.sendall(file_hash)
+
                 print(f"\nFile {filename} sent to {address}")
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -75,16 +80,16 @@ class SenderWindow(QWidget):
     def initUI(self):
         self.setWindowTitle("File Sender")
         self.setGeometry(100, 100, 600, 400)
-        self.setStyleSheet(DARK_THEME_STYLESHEET)  # Apply dark theme stylesheet
+        self.setStyleSheet(DARK_THEME_STYLESHEET)
         self.setAcceptDrops(True)
         
         layout = QVBoxLayout()
-        layout.setSpacing(10)  # Increased spacing
+        layout.setSpacing(10)
         
         file_layout = QHBoxLayout()
         file_layout.setSpacing(5)
         self.filename_edit = QLineEdit()
-        self.filename_edit.setPlaceholderText("Drag and drop or browse to select file")  # Placeholder text for clarity
+        self.filename_edit.setPlaceholderText("Drag and drop or browse to select file")
         self.browse_button = QPushButton("Browse")
         
         file_layout.addWidget(self.filename_edit)
@@ -125,7 +130,6 @@ class SenderWindow(QWidget):
         host = self.host_edit.text()
         port = int(self.port_edit.text())
         send_file(filename, key, host, port)
-
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
