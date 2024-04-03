@@ -1,76 +1,81 @@
-import sys, socket, os, hashlib
+import sys
+import socket
+import os
+import hashlib
+import zipfile
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QHBoxLayout
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 DARK_THEME_STYLESHEET = """
 QWidget {
-    background-color: #2D2D2D;
-    color: #E0E0E0;
+    background-color: #333;
+    color: #EEE;
     font-family: 'Segoe UI';
     font-size: 14px;
 }
 
 QLineEdit {
-    border: 2px solid #555555;
+    border: 2px solid #555;
     border-radius: 5px;
     padding: 5px;
-    background-color: #333333;
-    color: #E0E0E0;
+    background-color: #444;
+    color: #EEE;
 }
 
 QPushButton {
-    border: 2px solid #555555;
+    border: 2px solid #555;
     border-radius: 5px;
     padding: 5px;
-    background-color: #555555;
-    color: #E0E0E0;
+    background-color: #666;
+    color: #FFF;
+    font-weight: bold;
 }
 
 QPushButton:hover {
-    background-color: #777777;
+    background-color: #777;
 }
 
 QLabel {
-    color: #E0E0E0;
+    color: #AAA;
 }
 """
 
-def xor_encrypt(data, key):
-    return bytes(a ^ b for a, b in zip(data, key * (len(data) // len(key)) + key[:len(data) % len(key)]))
+def xor_encrypt_decrypt(data, key):
+    key_length = len(key)
+    return bytes([data[i] ^ key[i % key_length] for i in range(len(data))])
+
+def compress_file(original_file):
+    zip_filename = original_file + '.zip'
+    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        zipf.write(original_file, os.path.basename(original_file))
+    return zip_filename
 
 def send_file(filename, key, host, port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        try:
-            server_socket.bind((host, port))
-            server_socket.listen(1)
-            print(f"Listening on {host}:{port}")
+    compressed_filename = compress_file(filename)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.connect((host, port))
+            print(f"Connecting to {host}:{port}")
 
-            client_socket, address = server_socket.accept()
-            with client_socket:
-                print(f"Connection from {address} has been established.")
+            key_hash = hashlib.sha256(key).digest()
+            server_socket.sendall(key_hash)
 
-                key_hash = hashlib.sha256(key).digest()
-                client_socket.sendall(key_hash)
+            file_name = os.path.basename(compressed_filename).encode()
+            server_socket.sendall(len(file_name).to_bytes(4, 'big'))
+            server_socket.sendall(file_name)
 
-                file_name = os.path.basename(filename).encode()
-                client_socket.sendall(len(file_name).to_bytes(4, 'big'))
-                client_socket.sendall(file_name)
+            with open(compressed_filename, 'rb') as file:
+                file_data = file.read()
 
-                with open(filename, 'rb') as file:
-                    file_data = file.read()
+            encrypted_data = xor_encrypt_decrypt(file_data, key)
+            server_socket.sendall(len(encrypted_data).to_bytes(8, 'big'))
+            server_socket.sendall(encrypted_data)
 
-                encrypted_data = xor_encrypt(file_data, key)
-                client_socket.sendall(len(encrypted_data).to_bytes(8, 'big'))
-                client_socket.sendall(encrypted_data)
+            file_hash = hashlib.sha256(file_data).digest()
+            server_socket.sendall(file_hash)
 
-                # Send the SHA-256 hash of the original file data
-                file_hash = hashlib.sha256(file_data).digest()
-                client_socket.sendall(file_hash)
-
-                print(f"\nFile {filename} sent to {address}")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"File {compressed_filename} sent successfully.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 class SenderWindow(QWidget):
     def __init__(self):
@@ -80,14 +85,10 @@ class SenderWindow(QWidget):
     def initUI(self):
         self.setWindowTitle("File Sender")
         self.setGeometry(100, 100, 600, 400)
-        self.setStyleSheet(DARK_THEME_STYLESHEET)
-        self.setAcceptDrops(True)
         
         layout = QVBoxLayout()
-        layout.setSpacing(10)
         
         file_layout = QHBoxLayout()
-        file_layout.setSpacing(5)
         self.filename_edit = QLineEdit()
         self.filename_edit.setPlaceholderText("Drag and drop or browse to select file")
         self.browse_button = QPushButton("Browse")
@@ -114,6 +115,18 @@ class SenderWindow(QWidget):
 
         self.browse_button.clicked.connect(self.browse_file)
         self.start_button.clicked.connect(self.start_sending)
+        
+        self.setAcceptDrops(True)
+        
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            url = event.mimeData().urls()[0]
+            self.filename_edit.setText(url.toLocalFile())
+            event.acceptProposedAction()
 
     def browse_file(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Select File")
@@ -122,27 +135,14 @@ class SenderWindow(QWidget):
 
     def start_sending(self):
         filename = self.filename_edit.text()
-        key_text = self.key_edit.text()
-        if not key_text.strip():
-            print("Encryption key cannot be empty. Please enter a valid key.")
-            return
-        key = key_text.encode()
+        key = self.key_edit.text().encode()
         host = self.host_edit.text()
         port = int(self.port_edit.text())
         send_file(filename, key, host, port)
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event: QDropEvent):
-        if event.mimeData().hasUrls():
-            url = event.mimeData().urls()[0]
-            self.filename_edit.setText(url.toLocalFile())
-            event.acceptProposedAction()
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(DARK_THEME_STYLESHEET)
     window = SenderWindow()
     window.show()
     sys.exit(app.exec())

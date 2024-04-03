@@ -1,83 +1,91 @@
-import sys, socket, os, hashlib
+import os
+import sys
+import socket
+import hashlib
+import zipfile
+from pathlib import Path
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 
 DARK_THEME_STYLESHEET = """
 QWidget {
-    background-color: #2D2D2D;
-    color: #E0E0E0;
+    background-color: #333;
+    color: #EEE;
     font-family: 'Segoe UI';
     font-size: 14px;
 }
 
 QLineEdit {
-    border: 2px solid #555555;
+    border: 2px solid #555;
     border-radius: 5px;
     padding: 5px;
-    background-color: #333333;
-    color: #E0E0E0;
+    background-color: #444;
+    color: #EEE;
 }
 
 QPushButton {
-    border: 2px solid #555555;
+    border: 2px solid #555;
     border-radius: 5px;
     padding: 5px;
-    background-color: #555555;
-    color: #E0E0E0;
+    background-color: #666;
+    color: #FFF;
+    font-weight: bold;
 }
 
 QPushButton:hover {
-    background-color: #777777;
+    background-color: #777;
 }
 
 QLabel {
-    color: #E0E0E0;
+    color: #AAA;
 }
 """
 
-def xor_decrypt(data, key):
-    return bytes(a ^ b for a, b in zip(data, key * (len(data) // len(key)) + key[:len(data) % len(key)]))
+def xor_encrypt_decrypt(data, key):
+    key_length = len(key)
+    return bytes([data[i] ^ key[i % key_length] for i in range(len(data))])
+
+def decompress_file(zip_filename):
+    with zipfile.ZipFile(zip_filename, 'r') as zipf:
+        zipf.extractall(os.path.dirname(zip_filename))
 
 def receive_file(key, host='localhost', port=5000):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        try:
-            client_socket.connect((host, port))
-            
-            expected_key_hash = client_socket.recv(32)
-            key_hash = hashlib.sha256(key).digest()
-            if key_hash != expected_key_hash:
-                print("Error: Encryption key mismatch.")
-                return
+    documents_dir = Path.home() / 'Documents' / 'ReceivedFiles'
+    documents_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.bind((host, port))
+            client_socket.listen(1)
+            print(f"Listening on {host}:{port}")
 
-            file_name_length = int.from_bytes(client_socket.recv(4), 'big')
-            file_name = client_socket.recv(file_name_length).decode()
+            conn, addr = client_socket.accept()
+            with conn:
+                print(f"Connected by {addr}")
 
-            file_size = int.from_bytes(client_socket.recv(8), 'big')
-            downloads_path = os.path.expanduser('~/Downloads')
-            full_path = os.path.join(downloads_path, file_name)
+                key_hash = conn.recv(32)
+                if hashlib.sha256(key).digest() != key_hash:
+                    print("Error: Encryption key mismatch.")
+                    return
 
-            received_data = b''
-            while len(received_data) < file_size:
-                data = client_socket.recv(1024)
-                if not data:
-                    break
-                received_data += data
+                file_name_length = int.from_bytes(conn.recv(4), 'big')
+                file_name = conn.recv(file_name_length).decode()
 
-            decrypted_data = xor_decrypt(received_data, key)
-            with open(full_path, 'wb') as file:
-                file.write(decrypted_data)
+                file_size = int.from_bytes(conn.recv(8), 'big')
+                received_data = b''
+                while len(received_data) < file_size:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    received_data += data
 
-            # Receive the SHA-256 hash from the sender
-            received_file_hash = client_socket.recv(32)
+                decrypted_data = xor_encrypt_decrypt(received_data, key)
+                zip_filename = documents_dir / ("received_" + file_name)
+                with open(zip_filename, 'wb') as file:
+                    file.write(decrypted_data)
 
-            # Calculate the hash of the decrypted data
-            local_file_hash = hashlib.sha256(decrypted_data).digest()
-
-            if received_file_hash != local_file_hash:
-                print("Error: File integrity check failed, the file may be corrupted.")
-            else:
-                print(f"\nFile {file_name} received and integrity check passed.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+                print(f"File {file_name} received and saved to {zip_filename}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 class ReceiverWindow(QWidget):
     def __init__(self):
@@ -87,10 +95,8 @@ class ReceiverWindow(QWidget):
     def initUI(self):
         self.setWindowTitle("File Receiver")
         self.setGeometry(100, 100, 600, 400)
-        self.setStyleSheet(DARK_THEME_STYLESHEET)
         
         layout = QVBoxLayout()
-        layout.setSpacing(10)
         
         self.key_edit = QLineEdit()
         self.key_edit.setPlaceholderText("Enter encryption key")
@@ -111,17 +117,14 @@ class ReceiverWindow(QWidget):
         self.start_button.clicked.connect(self.start_receiving)
 
     def start_receiving(self):
-        key_text = self.key_edit.text()
-        if not key_text.strip():
-            print("Encryption key cannot be empty. Please enter a valid key.")
-            return
-        key = key_text.encode()
+        key = self.key_edit.text().encode()
         host = self.host_edit.text()
         port = int(self.port_edit.text())
         receive_file(key, host, port)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(DARK_THEME_STYLESHEET)
     window = ReceiverWindow()
     window.show()
     sys.exit(app.exec())
